@@ -1,6 +1,5 @@
 build:cc.c 
-	gcc -std=c11 cc.c -o cc
-	cc
+	gcc -m32 cc.c -o cc
 .PHONY:clean
 clean:
 	del *.exe

@@ -1,1 +1,4 @@
 open read close
+
+malloc 
+void* malloc (size_t size); 失败返回NULL
