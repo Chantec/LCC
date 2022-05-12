@@ -38,14 +38,13 @@ int *curr_id,symbols;
 
 // 类型
 enum { CHAR, INT, PTR };
-int *idmain;                  // the `main` function
-
+int *idmain;                 //指向main在符号表中的位置
 
 
 void next() 
 {
     char *id_begin;
-    int hash;//先不实现 ltd
+    int hash;
 
     while(token=*src)
     {
@@ -104,40 +103,26 @@ void next()
             token=Num;
             return ;
         }
-        //copy from xc.c ltd
-        else if (token == '"' || token == '\'')
+        //字符串 字符
+        else if(token=='\''||token=='"')
         {
-            id_begin = data;
+            id_begin=data;
             while (*src != 0 && *src != token)
             {
-                token_val = *src++;
-                if (token_val == '\\')
+                if((token_val=*src++)=='\\')//如果是\*的形式 如果是\n则是\n 否则就是*
                 {
-                    // escape character
-                    token_val = *src++;
-                    if (token_val == 'n') {
-                        token_val = '\n';
-                    }
+                    if((token_val=*src++)=='n')
+                        token_val='\n';
                 }
-
-                if (token == '"')
-                {
-                    *data++ = token_val;
-                }
+                if(token=='"') *data++=token_val;//存储 ltd data移动的话 如果标识data开始 不用标识？
             }
-
             src++;
-            // if it is a single character, return Num token
-            if (token == '"')
-            {
-                token_val = (int)id_begin;
-            }
-            else
-            {
-                token = Num;
-            }
-            return;
+            if(token=='"') 
+                token_val=(int)id_begin;
+            else 
+                token=Char;
         }
+
         else if(token=='/')
         {
             if(*src=='/')//注释
