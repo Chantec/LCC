@@ -1,3 +1,5 @@
 *.exe
 *.txt
 xc.c
+c4.c
+hello.c

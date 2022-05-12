@@ -7,7 +7,7 @@ char *src, *old_src;
 int poolsize;         
 int line;         
 
-/**********构建虚拟机**********/
+//构建虚拟机
 //内存空间
 int *text,*old_text,*stack;
 char *data;
@@ -19,13 +19,278 @@ int *PC,*SP,*BP,ax;//PC永远是下一条没有执行过的指令或者或 执�
 enum {LEA,IMM,JMP,CALL,JZ,JNZ,ENT,ADJ,LEV,LI,LC,SI,SC,PUSH,
        OR,XOR,AND,EQ,NE,LT,GT,LE,GE,SHL,SHR,ADD,SUB,MUL,DIV,MOD,
        OPEN,READ,CLOS,PRTF,MALC,MSET,MCMP,EXIT};
-/**********构建虚拟机end**********/
+
+//词法分析器
+enum {
+  Num = 128, Fun, Sys, Glo, Loc, Id,
+  Char, Else, Enum, If, Int, Return, Sizeof, While,
+  Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Brak
+};
+//从128开始是为了 保留asci 给单符号留出位置
+
+//符号表 下标的映射
+enum {Token, Hash, Name, Type, Class, Value, GType, GClass, GValue, IdSize};
+
+//token是符号类型 符号值 如果是数字就放在token_val里
+int token_val;
+
+int *curr_id,symbols;
+
+// 类型
+enum { CHAR, INT, PTR };
+int *idmain;                  // the `main` function
+
 
 
 void next() 
 {
-    token = *src++;
-    return;
+    char *id_begin;
+    int hash;//先不实现 ltd
+
+    while(token=*src)
+    {
+        src++;
+        if(token=='\n')
+            line++;
+        else if(token=='#')
+        {
+            //不支持宏 忽略它
+            while(*src!=0&&*src!='\n')
+                src++;
+        }
+        //标识符
+        else if(token>='a'&&token<='z'||token>='A'&&token<='Z'||token=='_')
+        {
+            id_begin=src-1;
+            hash=token;
+
+            while(*src>='a'&&*src<='z'||*src>='A'&&*src<='Z'||*src=='_'||*src>='0'&&*src<='9')
+            {
+                src++;
+                hash=hash*147+*src;//ltd why 147
+            }
+                
+            //最后有效字符 src-1 
+            //id_begin->src-1  长度src-id_begin
+
+            curr_id=symbols;
+            while(curr_id[Token])//ltd 这里不用判断越界吗
+            {
+                if(curr_id[Hash]==hash&&memcmp((char*)curr_id[Name],id_begin,src-id_begin))
+                {
+                    //找到了
+                    token=curr_id[Token];
+                    return ;
+                }
+                curr_id+=IdSize;//这里为啥不是IdSize+1 ltd
+            }
+
+            //注册标识符
+            curr_id[Token]=Id;
+            curr_id[Hash]=hash;
+            curr_id[Name]=(int)id_begin;
+            token=Id;
+            return ;
+        }
+        //数字
+        else if(token>='0'&&token<='9')
+        {
+            token_val=token-'0';
+            while(*src>='0'&&*src<='9')
+            {
+                token_val=token_val*10+*src-'0';
+                src++;
+            }
+            token=Num;
+            return ;
+        }
+        //copy from xc.c ltd
+        else if (token == '"' || token == '\'')
+        {
+            id_begin = data;
+            while (*src != 0 && *src != token)
+            {
+                token_val = *src++;
+                if (token_val == '\\')
+                {
+                    // escape character
+                    token_val = *src++;
+                    if (token_val == 'n') {
+                        token_val = '\n';
+                    }
+                }
+
+                if (token == '"')
+                {
+                    *data++ = token_val;
+                }
+            }
+
+            src++;
+            // if it is a single character, return Num token
+            if (token == '"')
+            {
+                token_val = (int)id_begin;
+            }
+            else
+            {
+                token = Num;
+            }
+            return;
+        }
+        else if(token=='/')
+        {
+            if(*src=='/')//注释
+            {
+                while(*src!=0&&*src!='\n')
+                    src++;
+            }
+            else 
+            {
+                token==Div;
+                return ;
+            }
+        }//== = ; < << <=;> >> >=; !=
+        else if(token=='=')
+        {
+            if(*src=='=')
+            {
+                src++;
+                token=Eq;
+            }
+            else 
+            {
+                token=Assign;
+            }
+            return ;
+        }
+        else if(token=='<')
+        {
+            if(*src=='=')
+            {
+                src++;
+                token=Le;
+            }
+            else if(*src=='<')
+            {
+                src++;
+                token=Shl;
+            }
+            else 
+            {
+                token=Lt;
+            }
+            return ;
+        }
+        else if(token=='>')
+        {
+            if(*src=='=')
+            {
+                src++;
+                token=Ge;
+            }
+            else if(*src=='>')
+            {
+                src++;
+                token=Shr;
+            }
+            else 
+            {
+                token=Gt;
+            }
+            return ;
+        }
+        else if(token=='!')
+        {   //ltd 没有实现not
+            if(*src=='=')
+            {
+                token=Ne;
+                src++;
+            }
+            return ;
+        }
+        else if(token=='|')
+        {
+            if(*src=='|')
+            {
+                src++;
+                token=Lor;
+            }
+            else 
+            {
+                token=Or;
+            }
+            return ;
+        }
+        else if(token=='&')
+        {
+            if(*src=='&')
+            {
+                src++;
+                token=Lan;
+            }
+            else 
+            {
+                token=And;
+            }
+            return ;
+        }
+        else if(token=='+')
+        {
+            if(*src=='+')
+            {
+                src++;
+                token=Inc;
+            }
+            else
+            {
+                token=Add;
+            }
+            return ;
+        }
+        else if(token=='-')
+        {
+            if(*src=='-')
+            {
+                src++;
+                token=Dec;
+            }
+            else 
+            {
+                token=Sub;
+            }
+            return ;
+        }
+        else if(token=='^')
+        {
+            token=Xor;
+            return ;
+        }
+        else if(token=='*')
+        {
+            token=Mul;
+            return ;
+        }
+        else if(token=='%')
+        {
+            token=Mod;
+            return ;
+        }
+        else if(token=='[')//ltd
+        {
+            token=Brak;
+            return ;
+        }
+        else if(token=='?')//ltd
+        {
+            token=Cond;
+            return ;
+        }
+        else if (token == '~' || token == ';' || token == '{' || token == '}' || token == '(' || token == ')' || token == ']' || token == ',' || token == ':') 
+        {
+            return;
+        }
+    }
 }
 
 void expression(int level) {
@@ -154,8 +419,6 @@ int main(int argc, char **argv)
 
     poolsize = 256 * 1024; // arbitrary size
     line = 1;
-    
-    goto test;
 
     if ((fd = open(*argv, 0)) < 0)//打开文件 open(filename,access)
     {
@@ -168,6 +431,33 @@ int main(int argc, char **argv)
         return -1;
     }
 
+    //init 初始化符号表
+
+    src = "char else enum if int return sizeof while "
+          "open read close printf malloc memset memcmp exit void main";
+
+    i=Char;
+    while(i<=While)
+    {
+        next();
+        curr_id[Token]=i++;
+    }
+
+    //system call 内置函数
+
+    i=OPEN;
+    while(i<=EXIT)
+    {
+        next();
+        curr_id[Class]=Sys;
+        curr_id[Type]=INT;//ltd 
+        curr_id[Value]=i++;//ltd
+    }
+
+    next();curr_id[Token]=Char;//void type ltd
+    next();idmain=curr_id;//绑定
+
+
     //read the source file
     if ((i = read(fd, src, poolsize-1)) <= 0)//读到的字符个数 放到了src[0:i-1]
     {
@@ -177,7 +467,6 @@ int main(int argc, char **argv)
     src[i] = 0; // add EOF character
     close(fd);
     //读入完毕
-test:
 
     //构建虚拟机
     
@@ -196,23 +485,6 @@ test:
     SP=BP=(int*)((int)stack+poolsize);
     PC=0;
     ax=0;
-
-    //test 中间代码
-    i = 0;
-    text[i++] = IMM;
-    text[i++] = 10;
-    text[i++] = PUSH;
-    text[i++] = IMM;
-    text[i++] = 20;
-    text[i++] = ADD;
-    text[i++] = PUSH;
-    text[i++] = EXIT;
-    PC = text;
-    
-    eval();
-    
-   
-
 
 
 
