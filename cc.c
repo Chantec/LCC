@@ -30,15 +30,23 @@ enum {
 
 //符号表 下标的映射
 enum {Token, Hash, Name, Type, Class, Value, GType, GClass, GValue, IdSize};
+//type:标识符的类型，即如果它是个变量，变量是 int 型、char 型还是指针型。
+//class:类别
 
 //token是符号类型 符号值 如果是数字就放在token_val里
 int token_val;
 
 int *curr_id,symbols;
 
-// 类型
+// 类型 type
 enum { CHAR, INT, PTR };
 int *idmain;                 //指向main在符号表中的位置
+
+
+//global_decl
+int basetype;
+
+
 
 
 void next() 
@@ -278,15 +286,172 @@ void next()
     }
 }
 
+void match(int tk)
+{
+    if(token!=tk)
+    {
+        printf("%d: expected token: %d\n", line, tk);
+        exit(-1);
+    }
+    else 
+        next();
+}
+
+
+
 void expression(int level) {
+}
+
+
+void enum_decl()
+{
+    // enum_decl ::= 'enum' [id] '{' id ['=' 'num'] {',' id ['=' 'num'] '}'
+    //id ['=' 'num'] {',' id ['=' 'num'] 
+
+    int i;
+    i=0;
+    while(token!='}')
+    {
+        if(token!=Id)
+        {
+            printf("%d: bad enum id %d\n",line,token);
+            exit(-1);//ltd
+        }
+        next();
+        if(token==Assign)
+        {
+            next();
+            if(token!=Num)
+            {
+                printf("%d: bad enum init\n",line);
+                exit(-1);
+            }
+            i=token_val;
+            next();
+        }
+
+        //更新符号表
+        curr_id[Class]=Num;//ltd 为什么是num
+        curr_id[Type]=INT;
+        curr_id[Value]=i++;
+
+        if(token==',') next();
+    }
+}
+
+
+void global_decl()
+{
+
+    // global_declaration ::= enum_decl | variable_decl | function_decl
+
+    // enum_decl ::= 'enum' [id] '{' id ['=' 'num'] {',' id ['=' 'num'] '}'
+
+    // variable_decl ::= type {'*'} id { ',' {'*'} id } ';'
+
+    // function_decl ::= type {'*'} id '(' parameter_decl ')' '{' body_decl '}'
+
+
+    int var_type;
+
+
+    if(token==Enum)
+    {
+        next();
+        if(token!='{')
+            match(Id);//这个id实际上我们不做任何处理
+        match('{');
+        enum_decl();
+        match('}');
+        match(';');
+        return ;
+    }
+    //like int * func(...){}
+    //or   int *a,b,...,**c;
+    if(token==Int)
+    {
+        basetype=CHAR;
+        next();
+    }
+    else if(token==Char)
+    {
+        basetype=CHAR;
+        next();
+    }
+    //处理 *(指针)
+    var_type=basetype;//basetype相当于变量最前面的那个基础值 逗号分割的变量可以加不同的指针
+    while(token==Mul)
+    {
+        var_type=var_type+PTR;
+        next();
+    }
+    if(token!=Id)
+    {
+        printf("%d: bad global decl\n",line);
+        exit(-1);
+    }
+    //如果已经声明过
+    if(curr_id[Class])//ltd
+    {
+        printf("%d: duplicate global decl\n",line);
+        exit(-1);
+    }
+
+    next();//match id
+
+    if(token=='(')
+    {
+        curr_id[Class]=Fun;
+        curr_id[Type]=var_type;
+        curr_id[Value]=(int)(text+1);//funcion的地址 text+1
+        func_decl();//ltd
+
+        return ;
+
+    }
+    //否则就是变量定义
+    curr_id[Type]=var_type;
+    curr_id[Class]=Glo;//global var
+    curr_id[Value]=(int)data;//分配内存 全局变量
+    data=data+sizeof(int);
+
+
+    while(token!=';')
+    {
+        match(',');//li
+        
+        var_type=basetype;
+        while(token==Mul)
+        {
+            var_type=var_type+PTR;
+            next();
+        }
+        if(token!=Id)
+        {
+            printf("%d: bad global decl\n",line);
+            exit(-1);
+        }
+        //如果已经声明过
+        if(curr_id[Class])//ltd
+        {
+            printf("%d: duplicate global decl\n",line);
+            exit(-1);
+        }
+        next();//match id
+
+        curr_id[Type]=var_type;
+        curr_id[Class]=Glo;//global var
+        curr_id[Value]=(int)data;//分配内存 全局变量
+        data=data+sizeof(int);
+    }
 }
 
 void program() 
 {
     next();                 
-    while (token > 0) {
-        printf("token is: %c\n", token);
-        next();
+    while (token > 0)
+    {
+        global_decl();
     }
 }
 
