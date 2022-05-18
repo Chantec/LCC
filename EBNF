@@ -22,4 +22,9 @@ if_statement ::= 'if' '(' expression ')' statement ['else' non_empty_statement]
 while_statement ::= 'while' '(' expression ')' non_empty_statement
 
 
-int *a b 
+if (...) <statement> [else <statement>]
+while (...) <statement>
+{ <statement> }
+return xxx;
+<empty statement>;
+expression; (expression end with semicolon)

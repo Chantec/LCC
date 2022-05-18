@@ -29,7 +29,7 @@ enum {
 //从128开始是为了 保留asci 给单符号留出位置
 
 //符号表 下标的映射
-enum {Token, Hash, Name, Type, Class, Value, GType, GClass, GValue, IdSize};
+enum {Token, Hash, Name, Type, Class, Value, BType, BClass, BValue, IdSize};
 //type:标识符的类型，即如果它是个变量，变量是 int 型、char 型还是指针型。
 //class:类别
 
@@ -45,6 +45,9 @@ int *idmain;                 //指向main在符号表中的位置
 
 //global_decl
 int basetype;
+
+//func_para
+int index_of_bp;
 
 
 
@@ -303,6 +306,146 @@ void expression(int level) {
 }
 
 
+void statement()
+{
+   
+}
+
+void func_para()
+{
+    // parameter_decl ::= type {'*'} id {',' type {'*'} id}
+    int var_type;
+    int params;
+    params=0;
+
+    while(token!=')')
+    {
+        //like int a,int *b,char c
+        if(token==INT)
+        {
+            var_type=INT;
+            next();
+        }else if(token==Char)
+        {
+            var_type=CHAR;
+            next();
+        }
+
+        while(token==Mul)
+        {
+            var_type=var_type+PTR;
+            next();
+        }
+
+        //id
+        if(token!=Id)
+        {
+            printf("%d: bad func para decl\n",line);
+            exit(-1);
+        }
+        if(curr_id[Class]==Loc)//ltd
+        {
+            printf("%d duplicate func para decl\n",line);
+            exit(-1);
+        }
+        match(Id);
+
+        curr_id[BClass] = curr_id[Class]; curr_id[Class]  = Loc;
+        curr_id[BType]  = curr_id[Type];  curr_id[Type]   = var_type;
+        curr_id[BValue] = curr_id[Value]; curr_id[Value]  = params++; //距离bp的偏移量
+
+        if(token!='}')
+            match(',');
+    }
+    index_of_bp=params+1;//ltd
+
+
+}
+void func_body()
+{
+    // body_decl ::= {variable_decl}, {statement}
+    int var_type;
+    int pos_var;
+    pos_var=index_of_bp;
+
+    //变量声明部分 int a,*b;
+    while(token==Int||token==Char)
+    {
+        if(token==Int)
+        {
+            basetype=INT;
+            next();
+        }
+        else if(token==Char)
+        {
+            basetype=CHAR;
+            next();
+        }
+
+        while(token!=';')
+        {
+            var_type=basetype;
+            while(token==Mul)
+            {
+                var_type=var_type+PTR;
+                next();
+            }
+            if (token!=Id) 
+            {
+                printf("%d: bad local decl\n", line);
+                exit(-1);
+            }
+            if (curr_id[Class] == Loc)//此变量已经出现过了（在本函数内）
+            {
+                printf("%d: duplicate local decl\n", line);
+                exit(-1);
+            }
+            match(Id);
+            //把他的全局属性隐藏
+
+            curr_id[BClass] = curr_id[Class]; curr_id[Class]  = Loc;
+            curr_id[BType]  = curr_id[Type];  curr_id[Type]   = var_type;
+            curr_id[BValue] = curr_id[Value]; curr_id[Value]  = ++pos_var;   
+
+            if(token!=';')
+                match(',');
+        }
+        match(';');
+
+        //为局部变量流出空间
+        *++text=ENT;
+        *++text=pos_var-index_of_bp;//ltd
+
+        while(token!='}')
+            statement();
+        
+        *++text=LEV;//ltd
+    }
+
+}
+void func_decl()
+{
+    // function_decl ::= type {'*'} id '(' parameter_decl ')' '{' body_decl '}'
+    match('(');//其实这里应该是next 但是这样写看起来比较清楚
+    func_para();
+    match(')');
+    match('{');
+    func_body();
+    match('}');
+
+    //使所有的局部变量 恢复他之前的值
+    curr_id=symbols;
+    while(curr_id[Token])
+    {
+        if(curr_id[Class]==Loc)
+        {
+            curr_id[Class]=curr_id[BClass];
+            curr_id[Type]=curr_id[BType];
+            curr_id[Value]=curr_id[BValue];
+        }
+        curr_id=curr_id+IdSize;
+    }
+}
 void enum_decl()
 {
     // enum_decl ::= 'enum' [id] '{' id ['=' 'num'] {',' id ['=' 'num'] '}'
@@ -338,7 +481,6 @@ void enum_decl()
         if(token==',') next();
     }
 }
-
 
 void global_decl()
 {
@@ -404,8 +546,8 @@ void global_decl()
         curr_id[Class]=Fun;
         curr_id[Type]=var_type;
         curr_id[Value]=(int)(text+1);//funcion的地址 text+1
-        func_decl();//ltd
-
+        func_decl();
+        match(';');
         return ;
 
     }
@@ -454,7 +596,6 @@ void program()
         global_decl();
     }
 }
-
 
 int eval() 
 {
