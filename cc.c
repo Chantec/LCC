@@ -308,9 +308,102 @@ void expression(int level) {
 
 void statement()
 {
-   
-}
+    // if (...) <statement> [else <statement>]
+    // while (...) <statement>
+    // { <statement> }
+    // return xxx;
+    // <empty statement>;
+    // expression; (expression end with semicolon)
+    
+    //if
 
+    // cond 
+    // jz a 
+    // true_statement
+    // jmp b 
+    // a: false_statement
+    // b:next 
+
+
+    int *a,*b;
+
+    if(token==If)
+    {
+        match(If);
+        match('(');
+        expression(1);//ltd
+        match(')');
+
+        *++text=JZ;
+        a=++text;
+
+        statement();
+
+        if(token==Else)
+        {
+            match(Else);
+
+            *++text=JMP;
+            b=++text;
+
+            *a=(int)(text+1);//这里加的不是1个字节 而是一个单位 int
+
+            statement();
+
+            *b=(int)(text+1);   
+        }
+        else 
+        {
+            *a=(int)(text+1);
+        }
+    }
+    else if(token==While)
+    {
+        match(While);
+        
+        match('(');
+        *a=(int)(text+1);
+        expression(1);
+        match(')');
+
+        *++text=JZ;
+        b=++text;
+
+        statement();
+
+        *++text=JMP;
+        *++text=*a;
+        *b=(int)(text+1);
+    }
+    else if(token==Return)
+    {
+        match(Return);
+
+        if(token!=';') 
+            expression(1);
+        
+        match(';');
+
+        *++text=LEV;//ltd 返回值放哪了
+    }
+    else if(token=='{')//语句块
+    {
+        match('{');
+        while(token!='}')
+            statement();
+        match('}');
+    }
+    else if(token==';')//空语句
+    {
+        match(';');
+    }
+    else 
+    {
+        //一般的语句 
+        expression(1);
+        match(';');
+    }
+}
 void func_para()
 {
     // parameter_decl ::= type {'*'} id {',' type {'*'} id}
