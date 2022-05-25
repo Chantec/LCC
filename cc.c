@@ -27,6 +27,7 @@ enum {
   Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Brak
 };
 //从128开始是为了 保留asci 给单符号留出位置
+//class里 num专指enum 
 
 //符号表 下标的映射
 enum {Token, Hash, Name, Type, Class, Value, BType, BClass, BValue, IdSize};
@@ -49,6 +50,17 @@ int basetype;
 //func_para
 int index_of_bp;
 
+//expression
+int expr_type;
+
+
+void debug_print_stack()
+{
+    printf("***stack top***\n");
+    for(int *i=SP;i<=BP;i++)
+        printf("%d\n",*(int *)i);
+    printf("***stack***\n");
+}
 
 
 
@@ -76,9 +88,15 @@ void next()
 
             while(*src>='a'&&*src<='z'||*src>='A'&&*src<='Z'||*src=='_'||*src>='0'&&*src<='9')
             {
-                src++;
                 hash=hash*147+*src;//ltd why 147
+                src++;
             }
+
+            //debug print_id
+            // for(int i=id_begin;i<=src-1;++i)
+            //     printf("%c",*(char *)i);
+            // printf("\n");
+
                 
             //最后有效字符 src-1 
             //id_begin->src-1  长度src-id_begin
@@ -86,7 +104,8 @@ void next()
             curr_id=symbols;
             while(curr_id[Token])//ltd 这里不用判断越界吗
             {
-                if(curr_id[Hash]==hash&&memcmp((char*)curr_id[Name],id_begin,src-id_begin))
+                if(curr_id[Hash]==hash&&memcmp((char*)curr_id[Name],id_begin,src-id_begin)==0)//bug 没有==0 ltd 为什么那样就dup了
+                //原因：如果没有这个 int main中的int也就不是Int了，而是id，从前面的语法就不匹配了后面更乱
                 {
                     //找到了
                     token=curr_id[Token];
@@ -94,6 +113,8 @@ void next()
                 }
                 curr_id+=IdSize;//这里为啥不是IdSize+1 ltd
             }
+
+           
 
             //注册标识符
             curr_id[Token]=Id;
@@ -126,12 +147,19 @@ void next()
                         token_val='\n';
                 }
                 if(token=='"') *data++=token_val;//存储 ltd data移动的话 如果标识data开始 不用标识？
+                //这里需要(char)吗 ltd 这里用int行吗
             }
             src++;
             if(token=='"') 
-                token_val=(int)id_begin;
+                token_val=(int)id_begin;//字符串的起始地址
             else 
                 token=Char;
+
+            // printf("debug next str\n");
+            // for(int p=(int)id_begin;p<(int)data;p++)
+            //     printf("%c-",*(char *)p);
+            // printf("\n");
+            return;//bug 没有return
         }
 
         else if(token=='/')
@@ -287,13 +315,15 @@ void next()
             return;
         }
     }
+    return ;//ltd
 }
 
 void match(int tk)
 {
     if(token!=tk)
     {
-        printf("%d: expected token: %d\n", line, tk);
+        printf("%d: expected token: %d %c\n", line, tk,tk);
+        printf("current token : char:%c int:%d\n",token,token);
         exit(-1);
     }
     else 
@@ -302,7 +332,174 @@ void match(int tk)
 
 
 
-void expression(int level) {
+void expression(int level) 
+{
+    int *this_id;
+    int tmp;//在函数模块是 充当函数参数个数
+    if(token==Num)
+    {
+        match(Num);
+
+        *++text=IMM;
+        *++text=token_val;
+        expr_type=INT;
+    }
+    else if(token=='"')
+    {
+        //这个时候已经存储str了，token这个其实是后面的引号
+        *++text=IMM;
+        *++text=token_val;//char *开始的地址
+
+        match('"');//我们这里不实现多个引号连起来的str
+
+        //需要用\0填充str后面的一个位置 因为默认是\0，所以直接跳过一个位置即可
+        //data=data+1;//liangtodo
+        data = (char *)(((int)data + sizeof(int)) & (-sizeof(int)));
+        expr_type = PTR;
+    }//ltd
+    //else if(token==Sizeof)
+    else if(token==Id)
+    {
+        this_id=curr_id;
+        match(Id);
+
+        //函数调用 add(1,2) printf("%d")
+        if(token=='(')
+        {
+            tmp=0;
+            match('(');
+            while(token!=')')
+            {
+                
+                expression(Assign);
+
+                *++text=PUSH;
+                tmp++;
+                if(token!=')')
+                    match(',');
+            }
+            match(')');
+
+            if(this_id[Class]==Sys)
+            {
+                //系统调用
+                *++text=this_id[Value];
+            }
+            else if(this_id[Class]==Fun)
+            {
+                //函数调用
+                *++text=CALL;
+                *++text=this_id[Value];
+            }
+            else 
+            {
+                printf("%d: bad func call\n",line);
+                exit(-1);
+            }
+
+            //函数参数由调用者入栈 也由调用者出栈
+            if(tmp>0)
+            {
+                *++text=ADJ;
+                *++text=tmp;
+            }
+            expr_type = this_id[Type];//函数返回值的类型
+        }
+        else if(this_id[Class]==Num)
+        {
+            //枚举类型
+            //ltd
+        }
+        else 
+        {
+            //普通变量
+            if(this_id[Class]==Glo)
+            {
+                *++text=IMM;
+                *++text=this_id[Value];
+            }
+            else if(this_id[Class]==Loc)
+            {
+                *++text=LEA;
+                *++text=index_of_bp-this_id[Value];//value 存的是地址 从bp位置++
+                //bp+(bp-地址)
+                //bp+(bp-(bp+1))
+                //bp-1
+            }
+            else 
+            {
+                printf("%d: undefined var\n", line);
+                exit(-1);
+            }
+            //上面得到的只是地址
+            expr_type = this_id[Type];
+            *++text = (expr_type == CHAR) ? LC : LI;
+        }
+    }
+    else if(token=='(')
+    {
+        //强转
+    }
+    else if(token==Mul)
+    {
+        //指针
+    }
+    else if(token==And)
+    {
+        //取地址
+    }
+    else if(token=='!')
+    {
+        //逻辑取反
+    }
+    else if(token=='~')
+    {
+        //按位取反
+    }
+    else if(token==Add)
+    {
+        //加号
+    }
+    else if(token==Sub)
+    {
+        //减号
+    }
+    else if(token==Inc||token==Dec)
+    {
+        //自增自减
+    }
+
+
+
+
+    tmp = expr_type;
+    //
+    if(token==Assign)
+    {
+        match(Assign);
+        if(*text==LC||*text==LI)
+        {
+            *text=PUSH;
+        }
+        else 
+        {
+            printf("%d: bad lvalue in assignment\n", line);
+            exit(-1);
+        }
+        expression(Assign);
+        expr_type = tmp;
+        *++text = (expr_type == CHAR) ? SC : SI;
+    }
+
+
+
+
+
+
+
+
+
+
 }
 
 
@@ -331,7 +528,7 @@ void statement()
     {
         match(If);
         match('(');
-        expression(1);//ltd
+        expression(Assign);//ltd
         match(')');
 
         *++text=JZ;
@@ -363,7 +560,7 @@ void statement()
         
         match('(');
         *a=(int)(text+1);
-        expression(1);
+        expression(Assign);
         match(')');
 
         *++text=JZ;
@@ -380,7 +577,7 @@ void statement()
         match(Return);
 
         if(token!=';') 
-            expression(1);
+            expression(Assign);
         
         match(';');
 
@@ -400,7 +597,7 @@ void statement()
     else 
     {
         //一般的语句 
-        expression(1);
+        expression(Assign);
         match(';');
     }
 }
@@ -504,16 +701,16 @@ void func_body()
                 match(',');
         }
         match(';');
-
-        //为局部变量流出空间
-        *++text=ENT;
-        *++text=pos_var-index_of_bp;//ltd
-
-        while(token!='}')
-            statement();
-        
-        *++text=LEV;//ltd
     }
+
+    //为局部变量流出空间 bug写循环里面了 会有什么后果？
+    *++text=ENT;
+    *++text=pos_var-index_of_bp;//ltd
+
+    while(token!='}')
+        statement();
+    
+    *++text=LEV;//ltd
 
 }
 void func_decl()
@@ -605,7 +802,7 @@ void global_decl()
     //or   int *a,b,...,**c;
     if(token==Int)
     {
-        basetype=CHAR;
+        basetype=INT;
         next();
     }
     else if(token==Char)
@@ -632,7 +829,7 @@ void global_decl()
         exit(-1);
     }
 
-    next();//match id
+    match(Id);
 
     if(token=='(')
     {
@@ -640,7 +837,6 @@ void global_decl()
         curr_id[Type]=var_type;
         curr_id[Value]=(int)(text+1);//funcion的地址 text+1
         func_decl();
-        match(';');
         return ;
 
     }
@@ -653,7 +849,7 @@ void global_decl()
 
     while(token!=';')
     {
-        match(',');//li
+        match(',');
         
         var_type=basetype;
         while(token==Mul)
@@ -796,6 +992,8 @@ int main(int argc, char **argv)
 {
    
     int i, fd;
+
+    int *tmp;
     
 
     argc--;//第一个是文件名
@@ -804,17 +1002,31 @@ int main(int argc, char **argv)
     poolsize = 256 * 1024; // arbitrary size
     line = 1;
 
-    if ((fd = open(*argv, 0)) < 0)//打开文件 open(filename,access)
+    
+
+    //构建虚拟机
+    
+    //分配内存空间
+    if((text=old_text=malloc(poolsize))==NULL||(data=malloc(poolsize))==NULL||(stack=malloc(poolsize))==NULL)
     {
-        printf("could not open(%s)\n", *argv);
+        printf("could not malloc for vm");
         return -1;
     }
-
-    if (!(src = old_src = malloc(poolsize))) {
-        printf("could not malloc(%d) for source area\n", poolsize);
+     if (!(symbols = malloc(poolsize))) {
+        printf("could not malloc for symbol table\n");
         return -1;
     }
+    //初始化空间
+    memset(text,0,poolsize);
+    memset(data,0,poolsize);
+    memset(stack,0,poolsize);
 
+    //初始化寄存器
+    SP=BP=(int*)((int)stack+poolsize);
+    PC=0;
+    ax=0;
+
+    
     //init 初始化符号表
 
     src = "char else enum if int return sizeof while "
@@ -842,6 +1054,20 @@ int main(int argc, char **argv)
     next();idmain=curr_id;//绑定
 
 
+    
+    //debug 修改 *argv->hello.c
+    //以恢复
+    if ((fd = open(*argv, 0)) < 0)//打开文件 open(filename,access)
+    {
+        printf("could not open(%s)\n", *argv);
+        return -1;
+    }
+
+    if (!(src = old_src = malloc(poolsize))) {
+        printf("could not malloc(%d) for source area\n", poolsize);
+        return -1;
+    }
+
     //read the source file
     if ((i = read(fd, src, poolsize-1)) <= 0)//读到的字符个数 放到了src[0:i-1]
     {
@@ -852,26 +1078,31 @@ int main(int argc, char **argv)
     close(fd);
     //读入完毕
 
-    //构建虚拟机
-    
-    //分配内存空间
-    if((text=old_text=malloc(poolsize))==NULL||(data=malloc(poolsize))==NULL||(stack=malloc(poolsize))==NULL)
+
+    program();
+
+    if (!(PC = (int *)idmain[Value]))
     {
-        printf("could not malloc for vm");
+        printf("main() not defined\n");
         return -1;
     }
-    //初始化空间
-    memset(text,0,poolsize);
-    memset(data,0,poolsize);
-    memset(stack,0,poolsize);
 
-    //初始化寄存器
-    SP=BP=(int*)((int)stack+poolsize);
-    PC=0;
-    ax=0;
+    //ltd
+    // setup stack
+    SP = (int *)((int)stack + poolsize);
+    *--SP = EXIT; // call exit if main returns
+    *--SP = PUSH; tmp = SP;
+    *--SP = argc;
+    *--SP = (int)argv;
+    *--SP = (int)tmp;
+    
+
+    
+    return eval();
+
+   
 
 
 
-    // program();
-    // return eval();
+    
 }
