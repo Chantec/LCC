@@ -28,6 +28,7 @@ enum {
 };
 //从128开始是为了 保留asci 给单符号留出位置
 //class里 num专指enum 
+//lor logic or
 
 //符号表 下标的映射
 enum {Token, Hash, Name, Type, Class, Value, BType, BClass, BValue, IdSize};
@@ -61,8 +62,6 @@ void debug_print_stack()
         printf("%d\n",*(int *)i);
     printf("***stack***\n");
 }
-
-
 
 void next() 
 {
@@ -113,8 +112,6 @@ void next()
                 }
                 curr_id+=IdSize;//这里为啥不是IdSize+1 ltd
             }
-
-           
 
             //注册标识符
             curr_id[Token]=Id;
@@ -332,7 +329,7 @@ void match(int tk)
 
 
 
-void expression(int level) 
+void expression(int prec) 
 {
     int *this_id;
     int tmp;//在函数模块是 充当函数参数个数
@@ -356,8 +353,11 @@ void expression(int level)
         //data=data+1;//liangtodo
         data = (char *)(((int)data + sizeof(int)) & (-sizeof(int)));
         expr_type = PTR;
-    }//ltd
-    //else if(token==Sizeof)
+    }
+    else if(token==Sizeof)
+    {
+        
+    }
     else if(token==Id)
     {
         this_id=curr_id;
@@ -438,7 +438,10 @@ void expression(int level)
     }
     else if(token=='(')
     {
-        //强转
+        //暂时不考虑强制转换
+        match('(');
+        expression(Assign);//ltd
+        match(')');
     }
     else if(token==Mul)
     {
@@ -468,37 +471,146 @@ void expression(int level)
     {
         //自增自减
     }
+   
 
 
-
-
-    tmp = expr_type;
     //
-    if(token==Assign)
+    while(token>=prec)
     {
-        match(Assign);
-        if(*text==LC||*text==LI)
+        tmp = expr_type;
+        if(token==Assign)
         {
-            *text=PUSH;
+            match(Assign);
+            if(*text==LC||*text==LI)
+            {
+                *text=PUSH;
+            }
+            else 
+            {
+                printf("%d: bad lvalue in assignment\n", line);
+                exit(-1);
+            }
+            expression(Assign);
+            expr_type = tmp;
+            *++text = (expr_type == CHAR) ? SC : SI;
         }
+        //cond 暂不实现 ltd
+        else if(token==Lor)
+        {}
+        else if(token==Lan)
+        {}
+        else if(token==Or) 
+        {}
+        else if(token==And)//取地址
+        {}
+        else if(token==Eq)
+        {
+            //==
+            next();
+            *++text=PUSH;
+            expression(Ne);//ltd
+            *++text=EQ;
+            expr_type=INT;//ltd
+        }
+        else if(token==Ne)
+        {
+            next();
+            *++text=PUSH;
+            expression(Lt);//ltd
+            *++text=NE;
+            expr_type=INT;
+        }
+        else if(token==Lt)
+        {
+            next();
+            *++text=PUSH;
+            expression(Shl);//ltd
+            *++text=LT;
+            expr_type=INT;
+        }
+        else if(token==Gt)
+        {
+            next();
+            *++text=PUSH;
+            expression(Shl);//ltd
+            *++text=GT;
+            expr_type=INT;
+        }
+        else if(token==Le)
+        {
+            next();
+            *++text=PUSH;
+            expression(Shl);//ltd
+            *++text=LE;
+            expr_type=INT;
+        }
+        else if(token==Ge)
+        {
+            next();
+            *++text=PUSH;
+            expression(Shl);//ltd
+            *++text=GE;
+            expr_type=INT;
+        }
+        else if(token==Shl)
+        {}
+        else if(token==Shr)
+        {}
+        else if(token==Add)
+        {
+            //先不考虑指针加法
+            next();
+            *++text=PUSH;
+            expression(Mul);
+            *++text=ADD;
+            expr_type=INT;
+        }
+        else if(token==Sub)
+        {
+            //先不考虑指针减法
+            next();
+            *++text=PUSH;
+            expression(Mul);
+            *++text=SUB;
+            expr_type=INT;
+        }
+        else if(token==Mul)
+        {
+            next();
+            *++text=PUSH;
+            expression(Inc);
+            *++text=MUL;
+            expr_type=INT;
+        }
+        else if(token==Div)
+        {
+            next();
+            *++text=PUSH;
+            expression(Inc);
+            *++text=DIV;
+            expr_type=INT;
+        }
+        else if(token==Mod)
+        {
+            next();
+            *++text=PUSH;
+            expression(Inc);
+            *++text=MOD;
+            expr_type=INT;//ltd
+        }
+        else if(token==Inc)
+        {}
+        else if(token==Dec)
+        {}
+        else if(token==Brak)
+        {}
         else 
         {
-            printf("%d: bad lvalue in assignment\n", line);
+            printf("%d: bad expr op\n");
             exit(-1);
         }
-        expression(Assign);
-        expr_type = tmp;
-        *++text = (expr_type == CHAR) ? SC : SI;
+
     }
-
-
-
-
-
-
-
-
-
 
 }
 
@@ -559,7 +671,8 @@ void statement()
         match(While);
         
         match('(');
-        *a=(int)(text+1);
+        //*a=(int)(text+1);
+        a=text+1;
         expression(Assign);
         match(')');
 
@@ -569,7 +682,8 @@ void statement()
         statement();
 
         *++text=JMP;
-        *++text=*a;
+        // *++text=*a;
+        *++text=(int)a;
         *b=(int)(text+1);
     }
     else if(token==Return)
@@ -578,6 +692,7 @@ void statement()
 
         if(token!=';') 
             expression(Assign);
+        //*++text=PUSH;//ltd
         
         match(';');
 
@@ -611,7 +726,7 @@ void func_para()
     while(token!=')')
     {
         //like int a,int *b,char c
-        if(token==INT)
+        if(token==Int)//bug 写成INT了 type是int
         {
             var_type=INT;
             next();
@@ -644,7 +759,7 @@ void func_para()
         curr_id[BType]  = curr_id[Type];  curr_id[Type]   = var_type;
         curr_id[BValue] = curr_id[Value]; curr_id[Value]  = params++; //距离bp的偏移量
 
-        if(token!='}')
+        if(token!=')')//bug 写成}了
             match(',');
     }
     index_of_bp=params+1;//ltd
@@ -774,18 +889,12 @@ void enum_decl()
 
 void global_decl()
 {
-
     // global_declaration ::= enum_decl | variable_decl | function_decl
-
     // enum_decl ::= 'enum' [id] '{' id ['=' 'num'] {',' id ['=' 'num'] '}'
-
     // variable_decl ::= type {'*'} id { ',' {'*'} id } ';'
-
     // function_decl ::= type {'*'} id '(' parameter_decl ')' '{' body_decl '}'
 
-
     int var_type;
-
 
     if(token==Enum)
     {
@@ -875,6 +984,8 @@ void global_decl()
         curr_id[Value]=(int)data;//分配内存 全局变量
         data=data+sizeof(int);
     }
+    match(';');//bug 未写
+
 }
 
 void program() 
@@ -971,7 +1082,7 @@ int eval()
         else if (op == MUL) ax = *SP++ * ax;
         else if (op == DIV) ax = *SP++ / ax;
         else if (op == MOD) ax = *SP++ % ax;//下面的未看 ltd
-        else if (op == EXIT) { printf("exit(%d)", *SP); return *SP;}
+        else if (op == EXIT) { /*printf("exit(%d)", *SP); */return *SP;}
         else if (op == OPEN) { ax = open((char *)SP[1], SP[0]); }
         else if (op == CLOS) { ax = close(*SP);}
         else if (op == READ) { ax = read(SP[2], (char *)SP[1], *SP); }
@@ -1096,13 +1207,5 @@ int main(int argc, char **argv)
     *--SP = (int)argv;
     *--SP = (int)tmp;
     
-
-    
-    return eval();
-
-   
-
-
-
-    
+    return eval(); 
 }
