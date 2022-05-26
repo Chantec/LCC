@@ -465,7 +465,13 @@ void expression(int prec)
     }
     else if(token==Sub)
     {
-        //减号
+        //减号 转换成-1*某个东西
+        next();
+        *++text=IMM;
+        *++text=-1;
+        *++text=PUSH;
+        expression(Inc);
+        *++text=MUL;
     }
     else if(token==Inc||token==Dec)
     {
@@ -496,7 +502,9 @@ void expression(int prec)
         }
         //cond 暂不实现 ltd
         else if(token==Lor)
-        {}
+        {
+            
+        }
         else if(token==Lan)
         {}
         else if(token==Or) 
