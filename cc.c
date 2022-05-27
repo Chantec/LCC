@@ -91,10 +91,7 @@ void next()
                 src++;
             }
 
-            //debug print_id
-            // for(int i=id_begin;i<=src-1;++i)
-            //     printf("%c",*(char *)i);
-            // printf("\n");
+           
 
                 
             //最后有效字符 src-1 
@@ -107,6 +104,10 @@ void next()
                 //原因：如果没有这个 int main中的int也就不是Int了，而是id，从前面的语法就不匹配了后面更乱
                 {
                     //找到了
+                    //debug print_id
+                    for(int i=id_begin;i<=src-1;++i)
+                        printf("%c",*(char *)i);
+                    printf("\n");
                     token=curr_id[Token];
                     return ;
                 }
@@ -118,6 +119,10 @@ void next()
             curr_id[Hash]=hash;
             curr_id[Name]=(int)id_begin;
             token=Id;
+
+            
+            
+
             return ;
         }
         //数字
@@ -503,7 +508,7 @@ void expression(int prec)
         //cond 暂不实现 ltd
         else if(token==Lor)
         {
-            
+
         }
         else if(token==Lan)
         {}
@@ -611,7 +616,22 @@ void expression(int prec)
         else if(token==Dec)
         {}
         else if(token==Brak)
-        {}
+        {
+            match(Brak);
+            *text = PUSH;
+            expression(Assign);
+            match(']');
+        
+            *++text = PUSH;
+            
+            *++text = IMM;
+            *++text = sizeof(int);
+            *++text = MUL;
+          
+            expr_type = INT;
+            *++text = ADD;
+            *++text = (expr_type == CHAR) ? LC : LI;
+        }
         else 
         {
             printf("%d: bad expr op\n");
@@ -903,6 +923,7 @@ void global_decl()
     // function_decl ::= type {'*'} id '(' parameter_decl ')' '{' body_decl '}'
 
     int var_type;
+    int array;
 
     if(token==Enum)
     {
@@ -957,11 +978,33 @@ void global_decl()
         return ;
 
     }
+
+    if(token==Brak)
+    {
+        next();
+        if(token!=Num)
+        {
+            printf("%d: bad array decl\n");
+            exit(-1);
+        }
+        curr_id[Type]=PTR+INT;
+        curr_id[Class]=Glo;//global var
+        curr_id[Value]=(int)data;
+        
+        data=(int)data+sizeof(int)*token_val;
+        match(Num);
+        match(']');
+        match(';');
+        return ;
+    }
+
+
     //否则就是变量定义
     curr_id[Type]=var_type;
     curr_id[Class]=Glo;//global var
     curr_id[Value]=(int)data;//分配内存 全局变量
     data=data+sizeof(int);
+    printf("\nvalue%d\n",curr_id[Value]);
 
 
     while(token!=';')
@@ -1106,10 +1149,59 @@ int eval()
     }
     return 0;
 }
+void debug_print_asm()
+{
+    printf("text:\n");
+    printf("main:%d\n",*idmain);
+    for(int * first_inst=old_text;first_inst<=text;first_inst++)
+    {
+        printf("%d:",(int)first_inst);
+
+        if(*first_inst==0) {printf("%s","LEA"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==1) {printf("%s","IMM"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==2) {printf("%s","JMP"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==3) {printf("%s","CALL"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==4) {printf("%s","JZ"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==5) {printf("%s","JNZ"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==6) {printf("%s","ENT"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==7) {printf("%s","ADJ"); printf(" %d",*(++first_inst));}
+        else if(*first_inst==8) {printf("%s","LEV");}
+        else if(*first_inst==9) {printf("%s","LI");}
+        else if(*first_inst==10) {printf("%s","LC");}
+        else if(*first_inst==11) {printf("%s","SI");}
+        else if(*first_inst==12) {printf("%s","SC");}
+        else if(*first_inst==13) {printf("%s","PUSH");}
+        else if(*first_inst==14) {printf("%s","OR");}
+        else if(*first_inst==15) {printf("%s","XOR");}
+        else if(*first_inst==16) {printf("%s","AND");}
+        else if(*first_inst==17) {printf("%s","EQ");}
+        else if(*first_inst==18) {printf("%s","NE");}
+        else if(*first_inst==19) {printf("%s","LT");}
+        else if(*first_inst==20) {printf("%s","GT");}
+        else if(*first_inst==21) {printf("%s","LE");}
+        else if(*first_inst==22) {printf("%s","GE");}
+        else if(*first_inst==23) {printf("%s","SHL");}
+        else if(*first_inst==24) {printf("%s","SHR");}
+        else if(*first_inst==25) {printf("%s","ADD");}
+        else if(*first_inst==26) {printf("%s","SUB");}
+        else if(*first_inst==27) {printf("%s","MUL");}
+        else if(*first_inst==28) {printf("%s","DIV");}
+        else if(*first_inst==29) {printf("%s","MOD");}
+        else if(*first_inst==30) {printf("%s","OPEN");}
+        else if(*first_inst==31) {printf("%s","READ");}
+        else if(*first_inst==32) {printf("%s","CLOS");}
+        else if(*first_inst==33) {printf("%s","PRTF");}
+        else if(*first_inst==34) {printf("%s","MALC");}
+        else if(*first_inst==35) {printf("%s","MSET");}
+        else if(*first_inst==36) {printf("%s","MCMP");}
+        else if(*first_inst==37) {printf("%s","EXIT");}
+
+        printf("\n");
+    }
+}
 
 int main(int argc, char **argv)
-{
-   
+{  
     int i, fd;
 
     int *tmp;
@@ -1214,6 +1306,8 @@ int main(int argc, char **argv)
     *--SP = argc;
     *--SP = (int)argv;
     *--SP = (int)tmp;
+
+    debug_print_asm();
     
     return eval(); 
 }
