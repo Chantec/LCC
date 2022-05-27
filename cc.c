@@ -57,10 +57,10 @@ int expr_type;
 
 void debug_print_stack()
 {
-    printf("***stack top***\n");
-    for(int *i=SP;i<=BP;i++)
+    printf("***hign address***\n");
+    for(int *i=BP;i>=SP;i--)
         printf("%d\n",*(int *)i);
-    printf("***stack***\n");
+    printf("***stack over***\n");
 }
 
 void next() 
@@ -105,9 +105,9 @@ void next()
                 {
                     //找到了
                     //debug print_id
-                    for(int i=id_begin;i<=src-1;++i)
-                        printf("%c",*(char *)i);
-                    printf("\n");
+                    // for(int i=id_begin;i<=src-1;++i)
+                    //     printf("%c",*(char *)i);
+                    // printf("\n");
                     token=curr_id[Token];
                     return ;
                 }
@@ -618,7 +618,12 @@ void expression(int prec)
         else if(token==Brak)
         {
             match(Brak);
-            *text = PUSH;
+            if(*text!=LC&&*text!=LI)
+            {
+                printf("%d: bad array use\n");
+                exit(-1);
+            }
+            *text = PUSH;//
             expression(Assign);
             match(']');
         
@@ -628,7 +633,7 @@ void expression(int prec)
             *++text = sizeof(int);
             *++text = MUL;
           
-            expr_type = INT;
+            expr_type = tmp-PTR;
             *++text = ADD;
             *++text = (expr_type == CHAR) ? LC : LI;
         }
@@ -987,7 +992,7 @@ void global_decl()
             printf("%d: bad array decl\n");
             exit(-1);
         }
-        curr_id[Type]=PTR+INT;
+        curr_id[Type]=PTR+var_type;
         curr_id[Class]=Glo;//global var
         curr_id[Value]=(int)data;
         
@@ -1054,6 +1059,8 @@ int eval()
     while(1)
     {
         op=*PC++;
+
+        //debug_print_stack();
         if(op==IMM) 
         {
             ax=*PC++;
@@ -1137,7 +1144,7 @@ int eval()
         else if (op == OPEN) { ax = open((char *)SP[1], SP[0]); }
         else if (op == CLOS) { ax = close(*SP);}
         else if (op == READ) { ax = read(SP[2], (char *)SP[1], *SP); }
-        else if (op == PRTF) { tmp = SP + PC[1]; ax = printf((char *)tmp[-1], tmp[-2], tmp[-3], tmp[-4], tmp[-5], tmp[-6]); }
+        else if (op == PRTF) { tmp = SP+PC[1] ; ax = printf((char *)tmp[-1], tmp[-2], tmp[-3], tmp[-4], tmp[-5], tmp[-6]); }
         else if (op == MALC) { ax = (int)malloc(*SP);}
         else if (op == MSET) { ax = (int)memset((char *)SP[2], SP[1], *SP);}
         else if (op == MCMP) { ax = memcmp((char *)SP[2], (char *)SP[1], *SP);}
@@ -1146,13 +1153,18 @@ int eval()
             printf("unknown instruction:%d\n", op);
             return -1;
         }
+        
     }
     return 0;
 }
 void debug_print_asm()
 {
+    #ifndef debug 
+    return ;
+    #endif 
+
     printf("text:\n");
-    printf("main:%d\n",*idmain);
+    printf("main:%d\n",idmain[Value]);
     for(int * first_inst=old_text;first_inst<=text;first_inst++)
     {
         printf("%d:",(int)first_inst);
@@ -1308,6 +1320,5 @@ int main(int argc, char **argv)
     *--SP = (int)tmp;
 
     debug_print_asm();
-    
     return eval(); 
 }
